@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+.env
+vpn_bot_backup_*.db
+org.chromium.Chromium.*/
+snap-private-tmp/
+systemd-private-*/
+torchinductor_*/
+apt-key.*.asc
+*.session
+hermes-cwd-*
+hermes-snap-*
+govpn_*
