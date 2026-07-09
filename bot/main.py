@@ -48,6 +48,8 @@ async def main():
     await init_db()
     await migrate_db()
     bot = Bot(token=Config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    # افزایش تایم‌اوت برای بهبود اتصال در شبکه ایران
+    bot.session.timeout = 60 
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("✅ Webhook deleted, starting polling...")
     dp = Dispatcher()

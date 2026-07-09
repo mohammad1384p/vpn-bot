@@ -3,7 +3,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from sqlalchemy import select, func, and_, delete
+from sqlalchemy import select, func, and_, delete, desc
 from bot.database import get_db, User, Payment, ConfigProfile, Package, DiscountCode, Ticket, Server, Admin, get_setting, set_setting
 from bot.utils import backup as backup_util
 from bot.config import Config as AppConfig
@@ -298,6 +298,7 @@ async def quick_add_balance(callback: CallbackQuery, state: FSMContext):
     if not user: return await callback.answer("❌ یافت نشد", show_alert=True)
     current = user.wallet
     await state.update_data(balance_user_id=uid, balance_action="add")
+    await callback.answer()
     await callback.message.answer(f"💰 **افزودن موجودی**\n👤 `{uid}`\n💰 فعلی: `{current:,}` T\nمبلغ را وارد کنید:", parse_mode="Markdown")
     await state.set_state(AdminState.waiting_for_balance_amount)
 
@@ -427,16 +428,10 @@ async def admin_financial_quick(message: Message):
 async def admin_reports(message: Message):
     if not await is_admin(message.from_user.id): return
     
-    # تنظیم ساعت ایران (UTC+3:30) برای محاسبه دقیق "امروز" و "دیروز"
-    iran_offset = timedelta(hours=3, minutes=30)
+    # تنظیم دقیق بازه زمانی برای آمار روزانه
     now_utc = datetime.utcnow()
-    now_iran = now_utc + iran_offset
-    
-    today_iran_start = now_iran.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_utc_start = today_iran_start - iran_offset
-    
-    yesterday_iran_start = today_iran_start - timedelta(days=1)
-    yesterday_utc_start = yesterday_iran_start - iran_offset
+    today_utc_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_utc_start = today_utc_start - timedelta(days=1)
     
     week_utc_start = now_utc - timedelta(days=7)
     month_utc_start = now_utc - timedelta(days=30)
@@ -548,6 +543,13 @@ async def manage_discount(callback: CallbackQuery):
     ])
     await callback.message.edit_text(f"🎟 **{dc.code}**\n📊 وضعیت: {status}\n📉 درصد: {dc.percent}%\n🔢 استفاده: {dc.used_count}/{dc.max_uses}", reply_markup=kb, parse_mode="Markdown")
 
+@router.callback_query(F.data == "back_to_discounts")
+async def back_to_discounts(callback: CallbackQuery):
+    class FakeMsg:
+        def __init__(self, cb): self.from_user = cb.from_user
+        async def answer(self, *a, **k): return await callback.message.answer(*a, **k)
+    await admin_discounts(FakeMsg(callback))
+
 @router.callback_query(F.data.startswith("toggle_disc:"))
 async def toggle_discount_status(callback: CallbackQuery):
     if not await is_admin(callback.from_user.id): return
@@ -576,13 +578,6 @@ async def delete_discount(callback: CallbackQuery):
             await callback.answer(f"🗑 کد {code_name} حذف شد", show_alert=True)
         else:
             await callback.answer("❌ یافت نشد", show_alert=True)
-    class FakeMsg:
-        def __init__(self, cb): self.from_user = cb.from_user
-        async def answer(self, *a, **k): return await callback.message.answer(*a, **k)
-    await admin_discounts(FakeMsg(callback))
-
-@router.callback_query(F.data == "add_discount")
-async def back_to_discounts(callback: CallbackQuery):
     class FakeMsg:
         def __init__(self, cb): self.from_user = cb.from_user
         async def answer(self, *a, **k): return await callback.message.answer(*a, **k)

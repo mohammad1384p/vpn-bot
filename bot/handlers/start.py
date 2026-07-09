@@ -111,6 +111,14 @@ async def check_join_callback(callback: CallbackQuery, bot: Bot):
         await callback.message.edit_text("⚠️ هنوز در تمام کانال‌ها عضو نشده‌اید:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_buttons))
 
 async def show_main_menu(message: Message, ref_code: str = None):
+    bot = message.bot
+    not_joined = await check_user_membership(bot, message.from_user.id)
+    if not_joined:
+        kb_buttons = [[InlineKeyboardButton(text=f"📢 عضویت در {ch['title']}", url=f"https://t.me/{ch['username']}")] for ch in not_joined]
+        kb_buttons.append([InlineKeyboardButton(text="✅ بررسی عضویت", callback_data="check_join")])
+        await message.answer("👋 برای استفاده از ربات، ابتدا در کانال‌های زیر عضو شوید:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_buttons))
+        return
+
     async for session in get_db():
         result = await session.execute(select(User).where(User.telegram_id == message.from_user.id))
         user = result.scalar_one_or_none()
