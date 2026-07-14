@@ -11,7 +11,7 @@ from sqlalchemy import select
 from bot.handlers import (
     start, services, shop, payment, test, help,
     packages, ticket, discount, ranking, renew,
-    inbounds, config_settings, admin, content_links, monitoring
+    inbounds, config_settings, admin, content_links, monitoring, report
 )
 import time
 
@@ -31,14 +31,48 @@ async def expiration_checker(bot: Bot):
         await asyncio.sleep(43200)
         now_ms = int(time.time() * 1000)
         async for session in get_db():
-            query = select(ConfigProfile).where(
-                ConfigProfile.is_active == True, ConfigProfile.is_unlimited_time == False,
-                ConfigProfile.expiry_time > now_ms, ConfigProfile.expiry_time < (now_ms + 2 * 24 * 3600 * 1000)
+            # بررسی انقضای زمانی
+            time_query = select(ConfigProfile).where(
+                ConfigProfile.is_active == True,
+                ConfigProfile.is_unlimited_time == False,
+                ConfigProfile.expiry_time < (now_ms + 2 * 24 * 3600 * 1000)  # کمتر از ۲ روز
             )
-            exp_configs = (await session.execute(query)).scalars().all()
+            exp_configs = (await session.execute(time_query)).scalars().all()
+            
+            # بررسی اتمام حجم (برای کانفیگ‌هایی که حجم محدود دارند)
+            vol_configs = (await session.execute(
+                select(ConfigProfile).where(
+                    ConfigProfile.is_active == True,
+                    ConfigProfile.is_unlimited_volume == False,
+                    ConfigProfile.volume_gb > 0
+                )
+            )).scalars().all()
+            
+        # ارسال هشدار برای کسانی که حجمشان رو به اتمام است
+        for c in vol_configs:
+            used_gb = c.used_traffic_bytes / (1024**3) if c.used_traffic_bytes else 0
+            remaining_gb = c.volume_gb - used_gb
+            if remaining_gb >= 0 and remaining_gb <= 2:  # کمتر از ۲ گیگ باقی مونده
+                try:
+                    await bot.send_message(
+                        c.telegram_id,
+                        f"⏳ **هشدار اتمام حجم:**\n"
+                        f"📦 کانفیگ: `{c.username}`\n"
+                        f"💾 حجم باقی‌مانده: `{remaining_gb:.1f} GB`\n\n"
+                        f"🎟 با کد `VIPT10` می‌توانید با **۱۰٪ تخفیف** تمدید کنید!",
+                        parse_mode="Markdown"
+                    )
+                except: pass
+        
         for c in exp_configs:
             try:
-                await bot.send_message(c.telegram_id, f"⏳ **هشدار انقضا:**\nاعتبار `{c.username}` رو به پایان است.", parse_mode="Markdown")
+                await bot.send_message(
+                    c.telegram_id,
+                    f"⏳ **هشدار انقضا:**\n"
+                    f"اعتبار `{c.username}` رو به پایان است.\n\n"
+                    f"🎟 با کد `VIPT10` می‌توانید با **۱۰٪ تخفیف** تمدید کنید!",
+                    parse_mode="Markdown"
+                )
                 async for session in get_db():
                     c.is_active = False
                     await session.commit()
@@ -68,6 +102,7 @@ async def main():
     dp.include_router(inbounds.router)
     dp.include_router(config_settings.router)
     dp.include_router(monitoring.router)
+    dp.include_router(report.router)
     dp.include_router(admin.router)
 
     asyncio.create_task(auto_backup_scheduler(bot))
