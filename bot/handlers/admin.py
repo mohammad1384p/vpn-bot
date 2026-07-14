@@ -424,95 +424,6 @@ async def admin_financial_quick(message: Message):
     ])
     await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 
-@router.message(F.text == "📊 گزارش‌ها")
-async def admin_reports(message: Message):
-    if not await is_admin(message.from_user.id): return
-    
-    # تنظیم دقیق بازه زمانی برای آمار روزانه
-    now_utc = datetime.utcnow()
-    today_utc_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-    yesterday_utc_start = today_utc_start - timedelta(days=1)
-    
-    week_utc_start = now_utc - timedelta(days=7)
-    month_utc_start = now_utc - timedelta(days=30)
-
-    async for session in get_db():
-        # --- آمار مالی ---
-        today_sum = (await session.execute(select(func.sum(Payment.amount)).where(and_(Payment.status == "approved", Payment.created_at >= today_utc_start)))).scalar() or 0
-        today_count = (await session.execute(select(func.count(Payment.id)).where(and_(Payment.status == "approved", Payment.created_at >= today_utc_start)))).scalar() or 0
-        
-        yesterday_sum = (await session.execute(select(func.sum(Payment.amount)).where(and_(Payment.status == "approved", Payment.created_at >= yesterday_utc_start, Payment.created_at < today_utc_start)))).scalar() or 0
-        yesterday_count = (await session.execute(select(func.count(Payment.id)).where(and_(Payment.status == "approved", Payment.created_at >= yesterday_utc_start, Payment.created_at < today_utc_start)))).scalar() or 0
-        
-        week_sum = (await session.execute(select(func.sum(Payment.amount)).where(and_(Payment.status == "approved", Payment.created_at >= week_utc_start)))).scalar() or 0
-        month_sum = (await session.execute(select(func.sum(Payment.amount)).where(and_(Payment.status == "approved", Payment.created_at >= month_utc_start)))).scalar() or 0
-        total_sum = (await session.execute(select(func.sum(Payment.amount)).where(Payment.status == "approved"))).scalar() or 0
-        
-        pending_count = (await session.execute(select(func.count(Payment.id)).where(Payment.status == "pending"))).scalar() or 0
-
-        # --- آمار کاربران ---
-        total_users = (await session.execute(select(func.count(User.id)))).scalar() or 0
-        verified_users = (await session.execute(select(func.count(User.id)).where(User.phone_verified == True))).scalar() or 0
-        total_referrals = (await session.execute(select(func.count(User.id)).where(User.referred_by != None, User.referred_by != ""))).scalar() or 0
-
-        # --- آمار سرویس‌ها ---
-        total_configs = (await session.execute(select(func.count(ConfigProfile.id)))).scalar() or 0
-        
-        # تفکیک سرویس‌های فعال
-        active_paid_configs = (await session.execute(select(func.count(ConfigProfile.id)).where(ConfigProfile.is_active == True, ConfigProfile.is_test == False, ~ConfigProfile.username.like('free_%')))).scalar() or 0
-        active_free_configs = (await session.execute(select(func.count(ConfigProfile.id)).where(ConfigProfile.is_active == True, ConfigProfile.username.like('free_%')))).scalar() or 0
-        active_test_configs = (await session.execute(select(func.count(ConfigProfile.id)).where(ConfigProfile.is_active == True, ConfigProfile.is_test == True))).scalar() or 0
-        
-        expired_configs = (await session.execute(select(func.count(ConfigProfile.id)).where(ConfigProfile.is_active == False))).scalar() or 0
-        
-        # آمار کل سرویس‌ها بر اساس نوع
-        free_configs_count = (await session.execute(select(func.count(ConfigProfile.id)).where(ConfigProfile.username.like('free_%')))).scalar() or 0
-        test_configs_count = (await session.execute(select(func.count(ConfigProfile.id)).where(ConfigProfile.is_test == True))).scalar() or 0
-        paid_configs_count = (await session.execute(select(func.count(ConfigProfile.id)).where(ConfigProfile.is_test == False, ~ConfigProfile.username.like('free_%')))).scalar() or 0
-
-        # --- آمار تیکت‌ها ---
-        open_tickets = (await session.execute(select(func.count(Ticket.id)).where(Ticket.status == "open"))).scalar() or 0
-        replied_tickets = (await session.execute(select(func.count(Ticket.id)).where(Ticket.status == "admin_replied"))).scalar() or 0
-
-        # --- قالب‌بندی و خروجی ---
-        def fmt(val): return f"{val:,}" if val else "0"
-        
-        text = (
-            f"📊 **گزارش جامع و دقیق سیستم**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 **درآمد و پرداخت‌ها:**\n"
-            f"├ 📅 **امروز:** `{fmt(today_sum)}` T ({today_count} تراکنش)\n"
-            f"├ 📆 **دیروز:** `{fmt(yesterday_sum)}` T ({yesterday_count} تراکنش)\n"
-            f"├ 🗓 **۷ روز اخیر:** `{fmt(week_sum)}` T\n"
-            f"├ 🗓 **۳۰ روز اخیر:** `{fmt(month_sum)}` T\n"
-            f"└ 📈 **کل درآمد:** `{fmt(total_sum)}` T\n"
-            f"⏳ **پرداخت‌های در انتظار تایید:** `{pending_count}` مورد\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👥 **آمار کاربران:**\n"
-            f"├ 👤 **کل کاربران:** `{total_users}`\n"
-            f"├ ✅ **تایید شده (شماره):** `{verified_users}`\n"
-            f"└ 👥 **کل زیرمجموعه‌ها:** `{total_referrals}`\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📦 **آمار سرویس‌ها و کانفیگ‌ها:**\n"
-            f"├ 🟢 **فعال (خریداری شده):** `{active_paid_configs}`\n"
-            f"├ 🎁 **فعال (رایگان):** `{active_free_configs}`\n"
-            f"├ 🧪 **فعال (تست):** `{active_test_configs}`\n"
-            f"├ ⛔ **منقضی شده:** `{expired_configs}`\n"
-            f"├ 🛒 **کل خریداری شده:** `{paid_configs_count}`\n"
-            f"├ 🎁 **کل رایگان:** `{free_configs_count}`\n"
-            f"├ 🧪 **کل تست:** `{test_configs_count}`\n"
-            f"└ 📊 **کل سرویس‌ها:** `{total_configs}`\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎫 **آمار تیکت‌ها:**\n"
-            f"├ 🟢 **باز (در انتظار پاسخ):** `{open_tickets}`\n"
-            f"└ 🟡 **پاسخ داده شده:** `{replied_tickets}`\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
-        
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-        ])
-        
-        await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 @router.message(F.text == "🎟 تخفیف‌ها")
 async def admin_discounts(message: Message):
     if not await is_admin(message.from_user.id): return
@@ -842,9 +753,8 @@ async def approve_payment(callback: CallbackQuery, bot: Bot):
     payment_id = int(callback.data.split("_")[-1])
     async for session in get_db():
         payment = (await session.execute(select(Payment).where(Payment.id == payment_id))).scalar_one_or_none()
-    if not payment or payment.status != "pending": return await callback.answer("قبلاً")
-    
-    async for session in get_db():
+        if not payment or payment.status != "pending": return await callback.answer("قبلاً")
+        
         payment.status = "approved"
         user = (await session.execute(select(User).where(User.telegram_id == payment.telegram_id))).scalar_one_or_none()
         if user:
