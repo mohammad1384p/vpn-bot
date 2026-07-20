@@ -31,18 +31,20 @@ async def expiration_checker(bot: Bot):
         await asyncio.sleep(43200)
         now_ms = int(time.time() * 1000)
         async for session in get_db():
-            # بررسی انقضای زمانی
+            # بررسی انقضای زمانی — فقط سرویس‌های غیرتست
             time_query = select(ConfigProfile).where(
                 ConfigProfile.is_active == True,
+                ConfigProfile.is_test == False,
                 ConfigProfile.is_unlimited_time == False,
                 ConfigProfile.expiry_time < (now_ms + 2 * 24 * 3600 * 1000)  # کمتر از ۲ روز
             )
             exp_configs = (await session.execute(time_query)).scalars().all()
             
-            # بررسی اتمام حجم (برای کانفیگ‌هایی که حجم محدود دارند)
+            # بررسی اتمام حجم — فقط سرویس‌های غیرتست
             vol_configs = (await session.execute(
                 select(ConfigProfile).where(
                     ConfigProfile.is_active == True,
+                    ConfigProfile.is_test == False,
                     ConfigProfile.is_unlimited_volume == False,
                     ConfigProfile.volume_gb > 0
                 )
