@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 from bot.database import User, ConfigProfile, get_db, get_setting
 from bot.panel_api import panel_api
 from bot.handlers.inbounds import get_selected_inbound_ids
-from bot.handlers.start import PHONE_KB
+from bot.handlers.start import PHONE_KB, requires_phone_auth
 from bot.utils.helpers import send_config_package
 
 router = Router()
@@ -16,8 +16,10 @@ async def get_test_account(message: Message, bot: Bot):
     await bot.send_chat_action(message.from_user.id, "typing")
     async for session in get_db():
         user = (await session.execute(select(User).where(User.telegram_id == message.from_user.id))).scalar_one_or_none()
-        if not user or not user.phone_verified:
-            return await message.answer("🔐 برای دریافت اکانت تست، لطفاً ابتدا شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB)
+        if not user:
+            return await message.answer("⚠️ لطفاً ابتدا /start را بزنید.")
+        if requires_phone_auth(user):
+            return await message.answer("🔐 چون با لینک زیرمجموعه وارد شده‌اید، برای دریافت اکانت تست ابتدا شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB)
         cooldown_hours = int(await get_setting(session, "test_cooldown_hours", "24"))
         max_test = int(await get_setting(session, "max_test_per_user", "1"))
         volume_mb = int(await get_setting(session, "test_volume_mb", "100"))

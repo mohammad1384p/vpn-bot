@@ -39,6 +39,13 @@ PHONE_KB = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+def requires_phone_auth(user) -> bool:
+    """احراز هویت شماره فقط برای زیرمجموعه‌ها (ورود با لینک رفرال)."""
+    if not user:
+        return False
+    is_referral = bool(user.referred_by and str(user.referred_by) != str(user.telegram_id))
+    return is_referral and not user.phone_verified
+
 async def check_user_membership(bot: Bot, user_id: int):
     channel_ids = await get_channel_ids()
     if not channel_ids: return []
@@ -96,7 +103,9 @@ async def check_join_callback(callback: CallbackQuery, bot: Bot):
     await callback.answer("⏳ در حال بررسی...")
     not_joined_channels = await check_user_membership(bot, callback.from_user.id)
     if not not_joined_channels:
-        await callback.message.delete()
+        # عضویت تأیید شد - پیام رو ادیت کن و منوی اصلی رو بفرست
+        await callback.message.edit_text("✅ **عضویت تأیید شد!**\n\n🏠 منوی اصلی در زیر نمایش داده شده است.")
+        # منوی اصلی رو بفرست
         class FakeMsg:
             def __init__(self, cb, ref):
                 self.from_user = cb.from_user
@@ -131,9 +140,9 @@ async def show_main_menu(message: Message, ref_code: str = None):
                 user.referred_by = ref_code
                 await session.commit()
                 
-    has_referral = bool(ref_code and ref_code != str(user.telegram_id)) or bool(user.referred_by and user.referred_by != str(user.telegram_id))
-    if has_referral and not user.phone_verified:
-        await message.answer("🔐 **تکمیل ثبت‌نام زیرمجموعه:**\nبرای فعال‌سازی حساب و دریافت هدیه خوش‌آمدگویی، لطفاً شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB, parse_mode="Markdown")
+    # احراز هویت شماره فقط برای زیرمجموعه‌ها
+    if requires_phone_auth(user):
+        await message.answer("🔐 **تکمیل ثبت‌نام زیرمجموعه:**\nچون با لینک زیرمجموعه وارد شده‌اید، برای فعال‌سازی حساب و دریافت هدیه خوش‌آمدگویی، لطفاً شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB, parse_mode="Markdown")
         return
     await message.answer(f"سلام {message.from_user.first_name} عزیز! 👋\nاز منوی زیر انتخاب کنید:", reply_markup=MAIN_MENU)
 

@@ -6,7 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy import select, func, delete
 from bot.database import get_db, ContentLink, User
 from bot.auth import is_admin
-from bot.handlers.start import check_user_membership, PHONE_KB, show_main_menu
+from bot.handlers.start import check_user_membership, PHONE_KB, show_main_menu, requires_phone_auth
 import uuid
 
 router = Router()
@@ -32,8 +32,11 @@ async def handle_content_link_start(message: Message, bot: Bot):
         return
     async for session in get_db():
         user = (await session.execute(select(User).where(User.telegram_id == message.from_user.id))).scalar_one_or_none()
-    if not user or not user.phone_verified:
-        await message.answer("🔐 برای مشاهده این محتوا، لطفاً ابتدا شماره تماس خود را در منوی اصلی ثبت و تایید کنید.", reply_markup=PHONE_KB)
+    if not user:
+        await message.answer("⚠️ لطفاً ابتدا /start را بزنید.")
+        return
+    if requires_phone_auth(user):
+        await message.answer("🔐 چون با لینک زیرمجموعه وارد شده‌اید، برای مشاهده این محتوا ابتدا شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB)
         return
     async for session in get_db():
         result = await session.execute(select(ContentLink).where(ContentLink.code == code))
@@ -90,8 +93,11 @@ async def start_bot_from_content(callback: CallbackQuery, bot: Bot):
     async for session in get_db():
         result = await session.execute(select(User).where(User.telegram_id == callback.from_user.id))
         user = result.scalar_one_or_none()
-    if not user or not user.phone_verified:
-        await callback.message.answer("🔐 برای استفاده از ربات، لطفاً شماره تماس خود را ارسال کنید.", reply_markup=PHONE_KB)
+    if not user:
+        await callback.message.answer("⚠️ لطفاً ابتدا /start را بزنید.")
+        return
+    if requires_phone_auth(user):
+        await callback.message.answer("🔐 چون با لینک زیرمجموعه وارد شده‌اید، لطفاً شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB)
         return
     await callback.message.delete()
     class FakeMsg:

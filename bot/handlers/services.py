@@ -46,8 +46,12 @@ async def update_config_traffic_from_panel(config):
 async def my_services_menu(message: Message):
     async for session in get_db():
         user = (await session.execute(select(User).where(User.telegram_id == message.from_user.id))).scalar_one_or_none()
-        if not user or not user.phone_verified:
-            await message.answer("⚠️ ابتدا شماره خود را ثبت کنید.")
+        if not user:
+            await message.answer("⚠️ لطفاً ابتدا /start را بزنید.")
+            return
+        from bot.handlers.start import requires_phone_auth, PHONE_KB
+        if requires_phone_auth(user):
+            await message.answer("🔐 چون با لینک زیرمجموعه وارد شده‌اید، ابتدا شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB)
             return
         result = await session.execute(select(ConfigProfile).where(ConfigProfile.telegram_id == message.from_user.id).order_by(desc(ConfigProfile.id)))
         configs = result.scalars().all()

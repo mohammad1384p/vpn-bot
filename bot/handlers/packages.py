@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy import select
 from bot.database import Package, User, get_db
 from bot.handlers.payment import PaymentState, show_card_info
-from bot.handlers.start import PHONE_KB
+from bot.handlers.start import PHONE_KB, requires_phone_auth
 
 router = Router()
 
@@ -12,8 +12,11 @@ router = Router()
 async def show_packages(message: Message, state: FSMContext):
     async for session in get_db():
         user = (await session.execute(select(User).where(User.telegram_id == message.from_user.id))).scalar_one_or_none()
-        if not user or not user.phone_verified:
-            await message.answer("🔐 برای خرید کانفیگ، لطفاً ابتدا شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB)
+        if not user:
+            await message.answer("⚠️ لطفاً ابتدا /start را بزنید.")
+            return
+        if requires_phone_auth(user):
+            await message.answer("🔐 چون با لینک زیرمجموعه وارد شده‌اید، برای خرید کانفیگ ابتدا شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB)
             return
         result = await session.execute(select(Package).where(Package.is_active == True).order_by(Package.sort_order.asc(), Package.price.asc()))
         packages = result.scalars().all()

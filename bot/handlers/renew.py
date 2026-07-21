@@ -7,7 +7,7 @@ from bot.database import ConfigProfile, Payment, Admin, Package, User, DiscountC
 from bot.panel_api import panel_api
 from bot.config import Config as BotConfig
 from bot.auth import is_admin
-from bot.handlers.start import PHONE_KB
+from bot.handlers.start import PHONE_KB, requires_phone_auth
 from bot.utils.helpers import send_config_package
 from datetime import datetime
 import time
@@ -53,8 +53,10 @@ async def show_renew_card_info(message: Message, amount: int, state: FSMContext)
 async def renew_menu(message: Message):
     async for session in get_db():
         user = (await session.execute(select(User).where(User.telegram_id == message.from_user.id))).scalar_one_or_none()
-        if not user or not user.phone_verified:
-            return await message.answer("🔐 برای تمدید سرویس، لطفاً ابتدا شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB)
+        if not user:
+            return await message.answer("⚠️ لطفاً ابتدا /start را بزنید.")
+        if requires_phone_auth(user):
+            return await message.answer("🔐 چون با لینک زیرمجموعه وارد شده‌اید، برای تمدید ابتدا شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB)
         result = await session.execute(select(ConfigProfile).where(ConfigProfile.telegram_id == message.from_user.id, ConfigProfile.is_test == False))
         configs = result.scalars().all()
     if not configs:

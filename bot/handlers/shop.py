@@ -6,7 +6,7 @@ from bot.database import User, ConfigProfile, get_db, get_setting
 from bot.panel_api import panel_api
 from bot.handlers.inbounds import get_selected_inbound_ids
 from bot.handlers.payment import PaymentState
-from bot.handlers.start import PHONE_KB
+from bot.handlers.start import PHONE_KB, requires_phone_auth
 from bot.utils.helpers import send_config_package
 import time, logging
 
@@ -23,8 +23,11 @@ async def show_wallet(message: Message, bot: Bot):
     try:
         async for session in get_db():
             user = (await session.execute(select(User).where(User.telegram_id == message.from_user.id))).scalar_one_or_none()
-            if not user or not user.phone_verified:
-                await message.answer("🔐 برای مشاهده کیف پول، لطفاً ابتدا شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB)
+            if not user:
+                await message.answer("⚠️ لطفاً ابتدا /start را بزنید.")
+                return
+            if requires_phone_auth(user):
+                await message.answer("🔐 چون با لینک زیرمجموعه وارد شده‌اید، برای مشاهده کیف پول ابتدا شماره تماس خود را تایید کنید.", reply_markup=PHONE_KB)
                 return
             refs_count = (await session.execute(select(func.count(User.id)).where(User.referred_by == user.referral_code))).scalar() or 0
             free_threshold = int(await get_setting(session, "free_config_threshold", "50000"))
