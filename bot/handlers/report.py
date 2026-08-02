@@ -73,9 +73,27 @@ async def admin_reports(message: Message):
         
         # --- سرویس‌ها ---
         total_configs = (await session.execute(select(func.count(ConfigProfile.id)))).scalar() or 0
-        active_configs = (await session.execute(
-            select(func.count(ConfigProfile.id)).where(ConfigProfile.is_active == True)
+        active_paid_configs = (await session.execute(
+            select(func.count(ConfigProfile.id)).where(and_(ConfigProfile.is_active == True, ConfigProfile.is_test == False))
         )).scalar() or 0
+        active_test_configs = (await session.execute(
+            select(func.count(ConfigProfile.id)).where(and_(ConfigProfile.is_active == True, ConfigProfile.is_test == True))
+        )).scalar() or 0
+        inactive_configs = (await session.execute(
+            select(func.count(ConfigProfile.id)).where(ConfigProfile.is_active == False)
+        )).scalar() or 0
+
+        # جزئیات سرویس‌های فعال (تا ۵ مورد از هر نوع)
+        sample_paid_configs = (await session.execute(
+            select(ConfigProfile).where(and_(ConfigProfile.is_active == True, ConfigProfile.is_test == False))
+            .order_by(ConfigProfile.expiry_time.desc())
+            .limit(5)
+        )).scalars().all()
+        sample_test_configs = (await session.execute(
+            select(ConfigProfile).where(and_(ConfigProfile.is_active == True, ConfigProfile.is_test == True))
+            .order_by(ConfigProfile.expiry_time.desc())
+            .limit(5)
+        )).scalars().all()
         
         # --- تیکت‌ها ---
         open_tickets = (await session.execute(
@@ -88,6 +106,7 @@ async def admin_reports(message: Message):
     def fmt(val):
         return f"{val:,}" if val else "0"
 
+    # ساخت متن گزارش
     text = (
         f"📊 **گزارش جامع سیستم**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -104,9 +123,28 @@ async def admin_reports(message: Message):
         f"└ ✅ **تایید شده (شماره):** `{verified_users}`\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"📦 **آمار سرویس‌ها:**\n"
-        f"├ 🟢 **فعال:** `{active_configs}`\n"
+        f"├ 🟢 **فعال (خریداری شده):** `{active_paid_configs}`\n"
+        f"├ 🧪 **فعال (تست):** `{active_test_configs}`\n"
+        f"├ 🔴 **غیرفعال:** `{inactive_configs}`\n"
         f"└ 📊 **کل:** `{total_configs}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    )
+    
+    # جزئیات سرویس‌های فعال
+    if sample_paid_configs:
+        text += "\n📝 **جزئیات سرویس‌ها (۵ مورد اخیر خریداری شده):**\n"
+        for cfg in sample_paid_configs:
+            expiry = datetime.fromtimestamp(cfg.expiry_time / 1000).strftime('%Y-%m-%d') if cfg.expiry_time else "نامحدود"
+            usage = f"{cfg.used_traffic_bytes / (1024**3):.2f}GB / {cfg.volume_gb}GB" if not cfg.is_unlimited_volume else "نامحدود"
+            text += f"• `{cfg.username}` | انقضا: `{expiry}` | مصرف: `{usage}`\n"
+    if sample_test_configs:
+        text += "\n📝 **جزئیات سرویس‌ها (۵ مورد اخیر تست):**\n"
+        for cfg in sample_test_configs:
+            expiry = datetime.fromtimestamp(cfg.expiry_time / 1000).strftime('%Y-%m-%d') if cfg.expiry_time else "نامحدود"
+            usage = f"{cfg.used_traffic_bytes / (1024**3):.2f}GB / {cfg.volume_gb}GB" if not cfg.is_unlimited_volume else "نامحدود"
+            text += f"• `{cfg.username}` | انقضا: `{expiry}` | مصرف: `{usage}`\n"
+
+    text += (
+        f"\n━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"🎫 **آمار تیکت‌ها:**\n"
         f"├ 🟢 **باز (در انتظار پاسخ):** `{open_tickets}`\n"
         f"└ 🟡 **پاسخ داده شده:** `{replied_tickets}`\n"

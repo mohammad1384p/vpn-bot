@@ -25,28 +25,28 @@ async def send_config_package(bot: Bot, user_id: int, sub_link: str, username: s
         help_windows = await get_setting(session, "help_windows", "")
         support_username = await get_setting(session, "support_username", "")
     
-    # 3. Format Message
+    # 3. Format Message (HTML only — parse_mode=HTML)
     if is_test:
-        action_text = "🎁 **اکانت تست شما آماده شد!**"
+        action_text = "🎁 <b>اکانت تست شما آماده شد!</b>"
     elif is_renew:
-        action_text = "🔄 **تمدید با موفقیت انجام شد!**"
+        action_text = "🔄 <b>تمدید با موفقیت انجام شد!</b>"
     else:
-        action_text = "✅ **خرید شما با موفقیت ثبت و فعال شد!**"
+        action_text = "✅ <b>خرید شما با موفقیت ثبت و فعال شد!</b>"
     
     text = (
         f"{action_text}\n\n"
-        f"👤 **نام کاربری:** `{username}`\n"
-        f"📦 **حجم:** {volume_display}\n"
-        f"⏱ **مدت زمان:** {duration_display}\n\n"
-        f"🔗 **لینک اشتراک (کلیک برای کپی):**\n"
+        f"👤 <b>نام کاربری:</b> <code>{username}</code>\n"
+        f"📦 <b>حجم:</b> {volume_display}\n"
+        f"⏱ <b>مدت زمان:</b> {duration_display}\n\n"
+        f"🔗 <b>لینک اشتراک (کلیک برای کپی):</b>\n"
         f"<code>{sub_link}</code>\n\n"
     )
     
     if not (help_android or help_ios or help_windows):
-        text += "⚠️ _لینک آموزشی تنظیم نشده است._\n"
+        text += "⚠️ <i>لینک آموزشی تنظیم نشده است.</i>\n"
         
-    text += f"\n🎫 **پشتیبانی:** @{support_username if support_username else 'Support'}\n"
-    text += f"💡 _برای استفاده، لینک اشتراک را در برنامه خود وارد کنید یا از QR Code زیر استفاده نمایید._"
+    text += f"\n🎫 <b>پشتیبانی:</b> @{support_username if support_username else 'Support'}\n"
+    text += f"💡 <i>برای استفاده، لینک اشتراک را در برنامه خود وارد کنید یا از QR Code زیر استفاده نمایید.</i>"
 
     # 4. Build Inline Keyboard (Glass Buttons for Guides)
     kb_buttons = []
@@ -72,8 +72,22 @@ async def send_config_package(bot: Bot, user_id: int, sub_link: str, username: s
             parse_mode="HTML",
             reply_markup=kb
         )
-    except Exception:
-        await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        import logging
+        logging.error(f"send_config_package photo failed for {user_id}: {e}")
+        try:
+            await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=kb)
+        except Exception as e2:
+            logging.error(f"send_config_package message failed for {user_id}: {e2}")
+            # last resort: plain text without parse_mode
+            plain = (
+                f"{'🎁 اکانت تست' if is_test else ('🔄 تمدید' if is_renew else '✅ خرید')} آماده شد!\n"
+                f"نام کاربری: {username}\n"
+                f"حجم: {volume_display}\n"
+                f"مدت: {duration_display}\n"
+                f"لینک:\n{sub_link}"
+            )
+            await bot.send_message(user_id, plain, reply_markup=kb)
         
     # 5. Notify Admins
     admin_ids = [Config.ADMIN_ID]

@@ -410,19 +410,80 @@ async def admin_financial_quick(message: Message):
         card_name = await get_setting(session, "card_name", "")
         referral_reward = await get_setting(session, "referral_reward", "10000")
         free_threshold = await get_setting(session, "free_config_threshold", "50000")
+        price_per_gb = await get_setting(session, "price_per_gb", "5000")
     if card_num: card_display = format_phone(card_num) if len(card_num) > 10 else card_num
     else: card_display = "❌"
     text = (
         f"💰 **تنظیمات مالی:**\n💳 `{card_display}`\n👤 `{card_name or '❌'}`\n"
-        f"🎁 پاداش: `{int(referral_reward):,}` T\n🎯 آستانه: `{int(free_threshold):,}` T"
+        f"🎁 پاداش: `{int(referral_reward):,}` T\n🎯 آستانه: `{int(free_threshold):,}` T\n"
+        f"💲 قیمت هر گیگ: `{int(price_per_gb):,}` T"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💳 شماره کارت", callback_data="setup_edit:card_number")],
         [InlineKeyboardButton(text="👤 نام", callback_data="setup_edit:card_name")],
         [InlineKeyboardButton(text="🎁 پاداش", callback_data="setup_edit:referral_reward")],
         [InlineKeyboardButton(text="🎯 آستانه", callback_data="setup_edit:free_config_threshold")],
+        [InlineKeyboardButton(text="💲 قیمت هر گیگ", callback_data="setup_edit:price_per_gb")],
     ])
     await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+@router.callback_query(F.data.startswith("setup_edit:"))
+async def setup_edit_callback(callback: CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.from_user.id): return
+    setting_key = callback.data.split(":")[1]
+    async for session in get_db():
+        current_value = await get_setting(session, setting_key)
+    await state.update_data(setting_key=setting_key)
+    await callback.message.edit_text(f"✏️ **ویرایش {setting_key}**\nمقدار فعلی: `{current_value}`\nمقدار جدید را وارد کنید (یا /cancel):")
+    await state.set_state(AdminState.waiting_for_new_value)
+
+@router.message(AdminState.waiting_for_new_value, F.text)
+async def process_new_setting_value_text(message: Message, state: FSMContext):
+    if not await is_admin(message.from_user.id): return
+    data = await state.get_data()
+    setting_key = data.get("setting_key")
+    if not setting_key: return
+    if message.text == "/cancel":
+        await state.clear()
+        await message.answer("❌ لغو شد", reply_markup=ADMIN_MENU)
+        return
+    new_value = message.text.strip()
+    if not new_value: return await message.answer("❌ مقدار نمی‌تواند خالی باشد.")
+    if setting_key in ["referral_reward", "free_config_threshold", "price_per_gb"]:
+        if not new_value.isdigit(): return await message.answer("❌ فقط عدد وارد کنید.")
+        new_value = str(int(new_value))
+    async for session in get_db():
+        await set_setting(session, setting_key, new_value)
+    await state.clear()
+    await message.answer(f"✅ **{setting_key}** به `{new_value}` تغییر کرد.", reply_markup=ADMIN_MENU, parse_mode="Markdown")
+
+@router.message(AdminState.waiting_for_new_value, F.document)
+async def process_restore(message: Message, state: FSMContext, bot: Bot):
+    if not await is_admin(message.from_user.id): return
+    data = await state.get_data()
+    if data.get("action") != "restore_db": return
+    file = await bot.get_file(message.document.file_id)
+    temp = "./temp_restore.db"
+    await bot.download_file(file.file_path, temp)
+    await backup_util.restore_backup(temp)
+    import os; os.remove(temp)
+    await state.clear()
+    await message.answer("✅ ریستور شد", reply_markup=ADMIN_MENU)
+
+@router.callback_query(F.data == "db_backup")
+async def manual_backup(callback: CallbackQuery, bot: Bot):
+    if not await is_admin(callback.from_user.id): return
+    path = await backup_util.create_backup()
+    await bot.send_document(callback.from_user.id, FSInputFile(path), caption="🗳 بکاپ")
+    import os; os.remove(path)
+    await callback.answer("✅")
+
+@router.callback_query(F.data == "db_restore_prompt")
+async def db_restore_prompt(callback: CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.from_user.id): return
+    await callback.message.answer("⚠️ فایل `.db` را ارسال کنید.")
+    await state.update_data(action="restore_db")
+    await state.set_state(AdminState.waiting_for_new_value)
 
 @router.message(F.text == "🎟 تخفیف‌ها")
 async def admin_discounts(message: Message):
@@ -772,6 +833,17 @@ async def approve_payment(callback: CallbackQuery, bot: Bot):
                 else: volume_gb = pkg.volume_gb
                 if pkg.duration_days <= 0: unlimited_dur, duration_hours = True, 0
                 else: duration_hours = pkg.duration_days * 24
+        else:
+            # سفارش اختصاصی: محاسبه حجم بر اساس مبلغ و قیمت هر گیگ
+            price_per_gb_str = await get_setting(session, "price_per_gb", "5000")
+            try:
+                price_per_gb = int(price_per_gb_str)
+            except:
+                price_per_gb = 5000
+            if price_per_gb > 0:
+                volume_gb = max(1, payment.amount // price_per_gb)
+                duration_hours = 30 * 24  # ۳۰ روز پیش‌فرض برای سفارش اختصاصی
+                pkg_name = f"سفارش اختصاصی ({volume_gb}GB)"
         await session.commit()
         
     email = f"user_{user.telegram_id}_{int(time.time())}"

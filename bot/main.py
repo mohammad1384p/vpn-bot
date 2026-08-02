@@ -8,6 +8,7 @@ from bot.database import init_db, migrate_db, get_db, ConfigProfile
 from bot.panel_api import panel_api
 from bot.utils import backup as backup_util
 from sqlalchemy import select
+from datetime import datetime
 from bot.handlers import (
     start, services, shop, payment, test, help,
     packages, ticket, discount, ranking, renew,
@@ -54,7 +55,7 @@ async def expiration_checker(bot: Bot):
         for c in vol_configs:
             used_gb = c.used_traffic_bytes / (1024**3) if c.used_traffic_bytes else 0
             remaining_gb = c.volume_gb - used_gb
-            if remaining_gb >= 0 and remaining_gb <= 2:  # کمتر از ۲ گیگ باقی مونده
+            if 0 <= remaining_gb <= 2 and (not c.last_volume_warning_at or (datetime.utcnow() - c.last_volume_warning_at).days >= 3):
                 try:
                     await bot.send_message(
                         c.telegram_id,
@@ -64,21 +65,37 @@ async def expiration_checker(bot: Bot):
                         f"🎟 با کد `VIPT10` می‌توانید با **۱۰٪ تخفیف** تمدید کنید!",
                         parse_mode="Markdown"
                     )
+                    async for session in get_db():
+                        c.last_volume_warning_at = datetime.utcnow()
+                        session.add(c)
+                        await session.commit()
                 except: pass
         
         for c in exp_configs:
-            try:
-                await bot.send_message(
-                    c.telegram_id,
-                    f"⏳ **هشدار انقضا:**\n"
-                    f"اعتبار `{c.username}` رو به پایان است.\n\n"
-                    f"🎟 با کد `VIPT10` می‌توانید با **۱۰٪ تخفیف** تمدید کنید!",
-                    parse_mode="Markdown"
-                )
+            # بررسی وضعیت از پنل
+            client_info = await panel_api.get_client_traffic(c.username, c.server_id)
+            if not client_info.get("success"):
+                # اگر در پنل نیست، حذف یا غیرفعال کن
                 async for session in get_db():
-                    c.is_active = False
+                    await session.delete(c)
                     await session.commit()
-            except: pass
+                await panel_api.delete_client(c.username, c.server_id)
+                continue
+            
+            if not c.last_expiry_warning_at or (datetime.utcnow() - c.last_expiry_warning_at).days >= 3:
+                try:
+                    await bot.send_message(
+                        c.telegram_id,
+                        f"⏳ **هشدار انقضا:**\n"
+                        f"اعتبار `{c.username}` رو به پایان است.\n\n"
+                        f"🎟 با کد `VIPT10` می‌توانید با **۱۰٪ تخفیف** تمدید کنید!",
+                        parse_mode="Markdown"
+                    )
+                    async for session in get_db():
+                        c.last_expiry_warning_at = datetime.utcnow()
+                        session.add(c)
+                        await session.commit()
+                except: pass
 
 async def main():
     await init_db()

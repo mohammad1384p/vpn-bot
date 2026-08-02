@@ -60,11 +60,16 @@ class ConfigProfile(Base):
     is_unlimited_volume = Column(Boolean, default=False)
     is_unlimited_time = Column(Boolean, default=False)
     group_name = Column(String(100), nullable=True)
+    last_volume_warning = Column(BigInteger, default=0)
+    last_expiry_warning = Column(BigInteger, default=0)
+    last_volume_warning_at = Column(DateTime, nullable=True)
+    last_expiry_warning_at = Column(DateTime, nullable=True)
 
 class Setting(Base):
     __tablename__ = "settings"
     key = Column(String(50), primary_key=True, nullable=False)
     value = Column(String(2000), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Package(Base):
     __tablename__ = "packages"
@@ -165,6 +170,8 @@ async def migrate_db():
             "ALTER TABLE configs ADD COLUMN group_name TEXT",
             "ALTER TABLE discount_codes ADD COLUMN is_first_purchase BOOLEAN DEFAULT 0",
             "ALTER TABLE discount_codes ADD COLUMN is_renewal BOOLEAN DEFAULT 0",
+            "ALTER TABLE configs ADD COLUMN last_volume_warning_at DATETIME",
+            "ALTER TABLE configs ADD COLUMN last_expiry_warning_at DATETIME",
         ]
         for sql in migrations:
             try:

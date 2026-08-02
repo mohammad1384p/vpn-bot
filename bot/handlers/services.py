@@ -58,15 +58,39 @@ async def my_services_menu(message: Message):
     if not configs:
         await message.answer("📦 **سرویس‌های شما:**\n⚠️ هنوز سرویسی ندارید.", parse_mode="Markdown")
         return
-    text = "📦 **سرویس‌های شما:**\n"
+    text = "📦 **سرویس‌های فعال شما:**\n"
     kb_buttons = []
+    has_active = False
     for config in configs:
+        # همیشه از پنل آپدیت می‌کنیم تا وضعیت دقیق باشه
+        await update_config_traffic_from_panel(config)
+        
+        now_ms = int(time.time() * 1000)
+        is_expired = config.expiry_time and config.expiry_time < now_ms and not config.is_unlimited_time
+        used_gb = config.used_traffic_bytes / (1024**3) if config.used_traffic_bytes else 0
+        is_full = config.volume_gb and used_gb >= config.volume_gb and not config.is_unlimited_volume
+        
+        # اگه کانفیگ واقعا منقضی یا پر شده، غیرفعالش کن و نمایش نده
+        if is_expired or is_full:
+            if config.is_active:
+                config.is_active = False
+                async for session in get_db():
+                    session.add(config)
+                    await session.commit()
+            continue
+            
+        has_active = True
         if config.is_test: status_icon, type_label = "🧪", "تست"
-        elif not config.is_active: status_icon, type_label = "⛔", "منقضی"
-        else: status_icon, type_label = "✅", "فعال"
+        else: status_icon, type_label = "✅", "خریداری شده"
+        
         remaining = format_remaining_time(config.expiry_time) if config.expiry_time and not config.is_unlimited_time else "♾️ نامحدود"
         text += f"{status_icon} **{config.username}** ({type_label})\n└ {remaining}\n"
         kb_buttons.append([InlineKeyboardButton(text=f"{status_icon} {config.username}", callback_data=f"service_detail:{config.id}")])
+    
+    if not has_active:
+        await message.answer("📦 **سرویس‌های شما:**\n⚠️ در حال حاضر سرویس فعالی ندارید.\n_(سرویس‌های منقضی شده در این لیست نمایش داده نمی‌شوند)_", parse_mode="Markdown")
+        return
+
     kb_buttons.append([InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="services_refresh")])
     await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_buttons), parse_mode="Markdown")
 

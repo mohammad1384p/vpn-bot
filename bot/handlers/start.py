@@ -60,7 +60,7 @@ async def check_user_membership(bot: Bot, user_id: int):
         except Exception: pass
     return not_joined
 
-@router.message(Command("start"))
+@router.message(Command("start"), ~F.text.regexp(r"^/start\s+content_"))
 async def cmd_start(message: Message, bot: Bot):
     parts = message.text.split()
     ref_code = parts[1] if len(parts) > 1 else None

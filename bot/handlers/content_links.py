@@ -41,15 +41,15 @@ async def handle_content_link_start(message: Message, bot: Bot):
     async for session in get_db():
         result = await session.execute(select(ContentLink).where(ContentLink.code == code))
         content_link = result.scalar_one_or_none()
-    if not content_link:
-        await message.answer("❌ **لینک نامعتبر!**\nاین محتوا یافت نشد.", parse_mode="Markdown")
-        return
-    if not content_link.is_active:
-        await message.answer("⛔ **غیرفعال!**", parse_mode="Markdown")
-        return
-    async for session in get_db():
+        if not content_link:
+            await message.answer("❌ **لینک نامعتبر!**\nاین محتوا یافت نشد.", parse_mode="Markdown")
+            return
+        if not content_link.is_active:
+            await message.answer("⛔ **غیرفعال!**", parse_mode="Markdown")
+            return
         content_link.views += 1
         await session.commit()
+        await session.refresh(content_link)
     await send_content_to_user(message, content_link, bot)
 
 @router.callback_query(F.data.startswith("check_join_content:"))

@@ -10,7 +10,7 @@ from bot.auth import is_admin
 from bot.handlers.start import PHONE_KB, requires_phone_auth
 from bot.utils.helpers import send_config_package
 from datetime import datetime
-import time
+import time, logging
 
 router = Router()
 
@@ -182,40 +182,102 @@ async def process_renew_receipt(message: Message, state: FSMContext, bot: Bot):
 
 @router.callback_query(F.data.startswith("approve_renew_"))
 async def approve_renew(callback: CallbackQuery, bot: Bot):
-    if not await is_admin(callback.from_user.id): return
+    if not await is_admin(callback.from_user.id):
+        return
+    try:
+        await callback.answer("⏳ در حال تمدید...")
+    except Exception:
+        pass
+
     parts = callback.data.split("_")
     payment_id = int(parts[2])
     config_id = int(parts[3])
-    async for session in get_db():
-        payment = (await session.execute(select(Payment).where(Payment.id == payment_id))).scalar_one_or_none()
-        config = (await session.execute(select(ConfigProfile).where(ConfigProfile.id == config_id))).scalar_one_or_none()
-    if not payment or payment.status != "pending" or not config: return await callback.answer("نامعتبر", show_alert=True)
-    
-    async for session in get_db():
-        payment.status = "approved"
-        await session.commit()
-        
-    res = await panel_api.renew_client(
-        email=config.username,
-        total_gb=config.volume_gb if not config.is_unlimited_volume else 0,
-        expiry_hours=config.duration_days * 24 if not config.is_unlimited_time else 0,
-        server_id=config.server_id,
-        unlimited_volume=config.is_unlimited_volume,
-        unlimited_time=config.is_unlimited_time
-    )
-    if res["success"]:
-        if res.get("expiry_time_ms"):
-            async for session in get_db():
-                config.expiry_time = res["expiry_time_ms"]
-                await session.commit()
-                
-        vol_display = "♾️ نامحدود" if config.is_unlimited_volume else f"{config.volume_gb} GB"
-        dur_display = "♾️ نامحدود" if config.is_unlimited_time else f"{config.duration_days} روز"
-        
-        await send_config_package(
-            bot=bot, user_id=payment.telegram_id, sub_link=config.sub_link,
-            username=config.username, volume_display=vol_display, duration_display=dur_display, is_renew=True
+
+    username = None
+    sub_link = None
+    user_telegram_id = None
+    volume_gb = 10
+    duration_days = 30
+    server_id = 1
+    unlimited_vol = False
+    unlimited_time = False
+
+    try:
+        async for session in get_db():
+            payment = (await session.execute(select(Payment).where(Payment.id == payment_id))).scalar_one_or_none()
+            config = (await session.execute(select(ConfigProfile).where(ConfigProfile.id == config_id))).scalar_one_or_none()
+            if not payment or payment.status != "pending" or not config:
+                try:
+                    await callback.answer("نامعتبر", show_alert=True)
+                except Exception:
+                    pass
+                return
+
+            payment.status = "approved"
+            username = config.username
+            sub_link = config.sub_link
+            user_telegram_id = payment.telegram_id
+            volume_gb = config.volume_gb
+            duration_days = config.duration_days
+            server_id = config.server_id
+            unlimited_vol = config.is_unlimited_volume
+            unlimited_time = config.is_unlimited_time
+            await session.commit()
+
+        res = await panel_api.renew_client(
+            email=username,
+            total_gb=volume_gb if not unlimited_vol else 0,
+            expiry_hours=duration_days * 24 if not unlimited_time else 0,
+            server_id=server_id,
+            unlimited_volume=unlimited_vol,
+            unlimited_time=unlimited_time,
         )
-        await callback.message.edit_text(callback.message.text + "\n✅ تمدید شد", parse_mode="Markdown")
-    else:
-        await callback.message.edit_text(callback.message.text + f"\n⚠️ {res['msg']}", parse_mode="Markdown")
+        if res.get("success"):
+            if res.get("expiry_time_ms"):
+                async for session in get_db():
+                    config = (await session.execute(select(ConfigProfile).where(ConfigProfile.id == config_id))).scalar_one_or_none()
+                    if config:
+                        config.expiry_time = res["expiry_time_ms"]
+                        config.is_active = True
+                        await session.commit()
+
+            vol_display = "♾️ نامحدود" if unlimited_vol else f"{volume_gb} GB"
+            dur_display = "♾️ نامحدود" if unlimited_time else f"{duration_days} روز"
+
+            try:
+                await send_config_package(
+                    bot=bot,
+                    user_id=user_telegram_id,
+                    sub_link=sub_link,
+                    username=username,
+                    volume_display=vol_display,
+                    duration_display=dur_display,
+                    is_renew=True,
+                )
+            except Exception as e:
+                logging.error(f"approve_renew send failed: {e}", exc_info=True)
+                try:
+                    await bot.send_message(
+                        user_telegram_id,
+                        f"🔄 تمدید انجام شد!\n👤 {username}\n📦 {vol_display}\n⏱ {dur_display}\n🔗\n<code>{sub_link}</code>",
+                        parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
+
+            try:
+                await callback.message.edit_text((callback.message.text or "") + "\n✅ تمدید شد و برای کاربر ارسال شد")
+            except Exception:
+                pass
+        else:
+            err = res.get("msg", "خطا")
+            try:
+                await callback.message.edit_text((callback.message.text or "") + f"\n⚠️ {err}")
+            except Exception:
+                pass
+    except Exception as e:
+        logging.error(f"approve_renew fatal: {e}", exc_info=True)
+        try:
+            await callback.message.edit_text((callback.message.text or "") + f"\n❌ خطای داخلی: {e}")
+        except Exception:
+            pass
