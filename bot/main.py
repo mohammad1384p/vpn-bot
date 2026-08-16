@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 
 async def auto_backup_scheduler(bot: Bot):
     while True:
-        await asyncio.sleep(86400)
+        await asyncio.sleep(3600)
         try:
             path = await backup_util.create_backup()
             await bot.send_document(Config.ADMIN_ID, FSInputFile(path), caption="🗳 Daily Backup")

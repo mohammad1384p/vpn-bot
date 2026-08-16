@@ -7,6 +7,7 @@ from bot.database import Payment, DiscountCode, Admin, get_db, get_setting
 from bot.config import Config
 from bot.auth import is_admin
 from datetime import datetime
+import logging
 
 router = Router()
 
@@ -157,4 +158,5 @@ async def process_receipt(message: Message, state: FSMContext, bot: Bot):
             )
             if admin_id != Config.ADMIN_ID:
                 await bot.forward_message(chat_id=admin_id, from_chat_id=message.chat.id, message_id=message.message_id)
-        except: pass
+        except Exception as e:
+            logging.error(f"Failed to forward payment to admin {admin_id}: {e}")
