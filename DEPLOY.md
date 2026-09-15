@@ -1,33 +1,56 @@
 # راهنمای اجرای بات روی سرور 🚀
 
-این راهنما برای اجرای بات روی سرور لینوکسی (Ubuntu 20.04 / 22.04 / 24.04) نوشته شده است.
+این راهنما قدم‌به‌قدم و از صفر، اجرای بات روی سرور لینوکسی (Ubuntu 20.04 / 22.04 / 24.04 / 26.04) را توضیح می‌دهد. کافی است مراحل را به ترتیب انجام دهید.
 
 ---
 
 ## پیش‌نیازها
 
-| مورد | توضیح |
+| مورد | از کجا بگیرید |
 |---|---|
-| توکن بات تلگرام | از [@BotFather](https://t.me/BotFather) با دستور `/newbot` بگیرید |
-| آیدی عددی ادمین | از [@userinfobot](https://t.me/userinfobot) بگیرید |
+| توکن بات تلگرام | از [@BotFather](https://t.me/BotFather) با دستور `/newbot` |
+| آیدی عددی ادمین | از [@userinfobot](https://t.me/userinfobot) (فقط عدد) |
 | پنل VPN | آدرس `URL` و `API Key` پنل (بعداً از داخل ربات اضافه می‌شود) |
 
-> ⚠️ **هشدار امنیتی:** هرگز توکن‌ها را در چت یا داخل کد پابلیک نفرستید. توکن را فقط در فایل `.env` روی سرور نگه دارید (این فایل در `.gitignore` است و وارد گیت نمی‌شود).
+> ⚠️ **هشدار امنیتی:** هرگز توکن‌ها را در چت، گروه یا داخل کد نفرستید. توکن فقط باید در فایل `.env` روی سرور باشد (این فایل در `.gitignore` است و وارد گیت نمی‌شود). اگر توکنی لو رفت، توکن گیت‌هاب را از تنظیمات گیت‌هاب **Delete** کنید و توکن ربات را با دستور `/revoke` در BotFather عوض کنید.
 
 ---
 
-## ۱) نصب ابزارهای لازم
+## ۱) نصب ابزارهای سیستمی
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-venv python3-pip git python3-dev build-essential libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev
+sudo apt install -y python3 python3-venv python3-pip git python3-dev build-essential libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev software-properties-common
 ```
 
 > پکیج‌های `python3-dev` و `libjpeg-dev` و `zlib1g-dev` برای نصب کتابخانه‌ی `Pillow` (ساخت QR کد) لازم‌اند. بدون آن‌ها خطای `Failed to build 'Pillow'` می‌گیرید.
 
-## ۲) دریافت کد روی سرور
+---
 
-اگر ریپو **خصوصی** است، با Personal Access Token گیت‌هاب کلون کنید:
+## ۲) بررسی نسخه‌ی پایتون (⚠️ مرحله‌ی مهم)
+
+```bash
+python3 --version
+ls /usr/bin/python3*
+```
+
+- اگر نسخه **3.10 تا 3.12** است → عالی، بروید مرحله‌ی ۳.
+- اگر نسخه **3.13 یا 3.14** است → نسخه‌های داخل `requirements.txt` برای این پایتون فایل آماده (wheel) ندارند و نصب شکست می‌خورد. پس اول **Python 3.12** را نصب کنید و بقیه‌ی مراحل را با آن انجام دهید:
+
+```bash
+sudo add-apt-repository -y ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install -y python3.12 python3.12-venv python3.12-dev
+python3.12 --version
+```
+
+> در ادامه‌ی راهنما هر جا `python3` دیدید، اگر سرورتان 3.13/3.14 بود به‌جایش `python3.12` بنویسید.
+
+---
+
+## ۳) دریافت کد روی سرور
+
+اگر ریپو **خصوصی** است، با Personal Access Token گیت‌هاب کلون کنید (به‌جای `<GITHUB_TOKEN>` توکن خودتان):
 
 ```bash
 git clone https://<GITHUB_TOKEN>@github.com/mohammad1384p/vpn-bot.git /root/vpn-bot
@@ -39,7 +62,9 @@ git clone https://<GITHUB_TOKEN>@github.com/mohammad1384p/vpn-bot.git /root/vpn-
 git clone https://github.com/mohammad1384p/vpn-bot.git /root/vpn-bot
 ```
 
-## ۳) ساخت محیط مجازی و نصب وابستگی‌ها
+---
+
+## ۴) ساخت محیط مجازی و نصب وابستگی‌ها
 
 ```bash
 cd /root/vpn-bot
@@ -48,17 +73,33 @@ python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 ```
 
-> اگر قبلاً `venv` خراب ساخته‌اید (نصب ناقص مانده)، اول پاکش کنید و دوباره بسازید:
+> اگر سرورتان Python 3.13/3.14 دارد، خط دوم را این‌طور بزنید:
+>
+> ```bash
+> python3.12 -m venv venv
+> ```
+
+در پایان باید چیزی شبیه `Successfully installed ...` ببینید. برای اطمینان:
+
+```bash
+./venv/bin/pip list | grep -Ei "aiogram|aiohttp|pillow"
+```
+
+باید هر سه (`aiogram` ،`aiohttp` ،`pillow`) در لیست باشند.
+
+> اگر قبلاً یک `venv` خراب ساخته‌اید (نصب ناقص مانده)، پاکش کنید و دوباره بسازید:
 >
 > ```bash
 > cd /root/vpn-bot
 > rm -rf venv
-> python3 -m venv venv
+> python3 -m venv venv            # یا python3.12 -m venv venv
 > ./venv/bin/pip install --upgrade pip setuptools wheel
 > ./venv/bin/pip install -r requirements.txt
 > ```
 
-## ۴) ساخت فایل تنظیمات `.env`
+---
+
+## ۵) ساخت فایل تنظیمات `.env`
 
 ```bash
 nano /root/vpn-bot/.env
@@ -75,17 +116,23 @@ ADMIN_ID=123456789
 - `ADMIN_ID` → آیدی **عددی** تلگرام ادمین (از @userinfobot)
 
 > بدون `ADMIN_ID` ربات اجرا نمی‌شود (مقدارش در کد `int()` می‌شود).
+>
+> در `nano` با `Ctrl+O` بعد `Enter` ذخیره کنید و با `Ctrl+X` خارج شوید.
 
-## ۵) اجرای تستی (برای چک کردن خطاها)
+---
+
+## ۶) اجرای تستی (برای چک کردن خطاها)
 
 ```bash
 cd /root/vpn-bot
 PYTHONPATH=/root/vpn-bot ./venv/bin/python bot/main.py
 ```
 
-اگر لاگ `INFO` دیدید و خطایی نبود، یعنی همه‌چیز درست است. با `Ctrl+C` متوقفش کنید.
+اگر لاگ‌های `INFO` دیدید و خطایی نبود، یعنی همه‌چیز درست است. با `Ctrl+C` متوقفش کنید و بروید مرحله‌ی بعد.
 
-## ۶) اجرای دائمی با systemd (پیشنهاد شده)
+---
+
+## ۷) اجرای دائمی با systemd (پیشنهاد شده)
 
 فایل سرویس آماده در `deploy/vpnbot.service` داخل ریپو هست. نصبش کنید:
 
@@ -100,12 +147,16 @@ sudo systemctl start vpnbot
 
 ```bash
 sudo systemctl status vpnbot        # وضعیت ربات
+sudo journalctl -u vpnbot -f        # مشاهده‌ی لاگ زنده
 sudo systemctl restart vpnbot       # ری‌استارت
 sudo systemctl stop vpnbot          # توقف
-sudo journalctl -u vpnbot -f        # مشاهده‌ی لاگ زنده
 ```
 
-## ۷) راه‌اندازی اولیه داخل ربات
+> چون محیط مجازی همیشه در مسیر `/root/vpn-bot/venv` ساخته می‌شود، فرقی نمی‌کند با `python3` یا `python3.12` ساخته باشید — فایل سرویس بدون تغییر کار می‌کند.
+
+---
+
+## ۸) راه‌اندازی اولیه داخل ربات
 
 1. در تلگرام به ربات پیام `/start` بدهید.
 2. چون `ADMIN_ID` شماست، پنل مدیریت را می‌بینید.
@@ -119,44 +170,19 @@ sudo journalctl -u vpnbot -f        # مشاهده‌ی لاگ زنده
 
 ## عیب‌یابی خطاهای رایج
 
-### خطای `Failed to build 'Pillow'` روی Python 3.13 / 3.14
+### خطای `Failed to build 'Pillow'` یا `Getting requirements to build wheel ... error`
 
-اگر `python3 --version` نسخه‌ی **3.13 یا 3.14** نشان می‌دهد، مشکل این است: نسخه‌های پین‌شده در `requirements.txt` (مثل `Pillow==10.2.0` و `aiohttp==3.9.3`) برای این پایتون‌های جدید `wheel` آماده ندارند و از روی سورس هم بیلد نمی‌شوند.
+**علت ۱ (رایج‌ترین):** پایتون سرور 3.13 یا 3.14 است و پکیج‌های قدیمی wheel آماده ندارند.
+→ راه‌حل: [مرحله‌ی ۲](#۲-بررسی-نسخه‌ی-پایتون-️-مرحله‌ی-مهم) را انجام دهید و `venv` را با `python3.12` بسازید.
 
-**راه‌حل پیشنهادی:** ساخت محیط مجازی با Python 3.12:
-
-```bash
-# بررسی نسخه‌های موجود
-python3 --version
-ls /usr/bin/python3*
-
-# اگر python3.12 ندارید، نصبش کنید (Ubuntu)
-sudo apt update
-sudo apt install -y software-properties-common
-sudo add-apt-repository -y ppa:deadsnakes/ppa
-sudo apt update
-sudo apt install -y python3.12 python3.12-venv python3.12-dev build-essential libjpeg-dev zlib1g-dev libpng-dev
-
-# ساخت دوباره‌ی venv با پایتون 3.12
-cd /root/vpn-bot
-rm -rf venv
-python3.12 -m venv venv
-./venv/bin/pip install --upgrade pip setuptools wheel
-./venv/bin/pip install -r requirements.txt
-```
-
-> مسیر `venv` عوض نمی‌شود، پس فایل سرویس systemd (`deploy/vpnbot.service`) بدون تغییر کار می‌کند.
-
-### خطای `Failed to build 'Pillow'` روی Python 3.12 و قدیمی‌تر
-
-یعنی وابستگی‌های سیستمی نصب نیست یا `pip` قدیمی است. راه‌حل:
+**علت ۲:** وابستگی‌های سیستمی نصب نیست یا `pip` قدیمی است. راه‌حل:
 
 ```bash
 sudo apt update
 sudo apt install -y python3-dev build-essential libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev
 cd /root/vpn-bot
 rm -rf venv
-python3 -m venv venv
+python3 -m venv venv            # یا python3.12 -m venv venv
 ./venv/bin/pip install --upgrade pip setuptools wheel
 ./venv/bin/pip install -r requirements.txt
 ```
@@ -171,13 +197,23 @@ cd /root/vpn-bot
 PYTHONPATH=/root/vpn-bot ./venv/bin/python bot/main.py
 ```
 
+### ربات اجرا می‌شود ولی جواب نمی‌دهد
+
+لاگ زنده را ببینید:
+
+```bash
+sudo journalctl -u vpnbot -f
+```
+
+موارد رایج: اشتباه بودن `BOT_TOKEN`، خالی/اشتباه بودن `ADMIN_ID`، یا وصل نبودن اینترنت سرور به تلگرام.
+
 ---
 
 ## بک‌آپ خودکار
 
 ربات هر ساعت از دیتابیس (`vpn_bot.db`) بک‌آپ می‌گیرد و برای ادمین تلگرام می‌فرستد، پس کافی است ربات به‌درستی اجرا شده باشد.
 
-## آپدیت ربات به نسخه جدید
+## آپدیت ربات به نسخه‌ی جدید
 
 ```bash
 cd /root/vpn-bot
