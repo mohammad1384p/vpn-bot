@@ -20,8 +20,10 @@
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-venv python3-pip git
+sudo apt install -y python3 python3-venv python3-pip git python3-dev build-essential libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev
 ```
+
+> پکیج‌های `python3-dev` و `libjpeg-dev` و `zlib1g-dev` برای نصب کتابخانه‌ی `Pillow` (ساخت QR کد) لازم‌اند. بدون آن‌ها خطای `Failed to build 'Pillow'` می‌گیرید.
 
 ## ۲) دریافت کد روی سرور
 
@@ -42,9 +44,19 @@ git clone https://github.com/mohammad1384p/vpn-bot.git /root/vpn-bot
 ```bash
 cd /root/vpn-bot
 python3 -m venv venv
-./venv/bin/pip install --upgrade pip
+./venv/bin/pip install --upgrade pip setuptools wheel
 ./venv/bin/pip install -r requirements.txt
 ```
+
+> اگر قبلاً `venv` خراب ساخته‌اید (نصب ناقص مانده)، اول پاکش کنید و دوباره بسازید:
+>
+> ```bash
+> cd /root/vpn-bot
+> rm -rf venv
+> python3 -m venv venv
+> ./venv/bin/pip install --upgrade pip setuptools wheel
+> ./venv/bin/pip install -r requirements.txt
+> ```
 
 ## ۴) ساخت فایل تنظیمات `.env`
 
@@ -102,6 +114,62 @@ sudo journalctl -u vpnbot -f        # مشاهده‌ی لاگ زنده
    - `url` → آدرس پنل (مثل `https://panel.example.com:2053`)
    - `api_key` → کلید API پنل
 4. پکیج‌ها/پلن‌ها را بسازید و درگاه پرداخت را تنظیم کنید.
+
+---
+
+## عیب‌یابی خطاهای رایج
+
+### خطای `Failed to build 'Pillow'` روی Python 3.13 / 3.14
+
+اگر `python3 --version` نسخه‌ی **3.13 یا 3.14** نشان می‌دهد، مشکل این است: نسخه‌های پین‌شده در `requirements.txt` (مثل `Pillow==10.2.0` و `aiohttp==3.9.3`) برای این پایتون‌های جدید `wheel` آماده ندارند و از روی سورس هم بیلد نمی‌شوند.
+
+**راه‌حل پیشنهادی:** ساخت محیط مجازی با Python 3.12:
+
+```bash
+# بررسی نسخه‌های موجود
+python3 --version
+ls /usr/bin/python3*
+
+# اگر python3.12 ندارید، نصبش کنید (Ubuntu)
+sudo apt update
+sudo apt install -y software-properties-common
+sudo add-apt-repository -y ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install -y python3.12 python3.12-venv python3.12-dev build-essential libjpeg-dev zlib1g-dev libpng-dev
+
+# ساخت دوباره‌ی venv با پایتون 3.12
+cd /root/vpn-bot
+rm -rf venv
+python3.12 -m venv venv
+./venv/bin/pip install --upgrade pip setuptools wheel
+./venv/bin/pip install -r requirements.txt
+```
+
+> مسیر `venv` عوض نمی‌شود، پس فایل سرویس systemd (`deploy/vpnbot.service`) بدون تغییر کار می‌کند.
+
+### خطای `Failed to build 'Pillow'` روی Python 3.12 و قدیمی‌تر
+
+یعنی وابستگی‌های سیستمی نصب نیست یا `pip` قدیمی است. راه‌حل:
+
+```bash
+sudo apt update
+sudo apt install -y python3-dev build-essential libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev
+cd /root/vpn-bot
+rm -rf venv
+python3 -m venv venv
+./venv/bin/pip install --upgrade pip setuptools wheel
+./venv/bin/pip install -r requirements.txt
+```
+
+### خطای `ModuleNotFoundError: No module named 'aiogram'`
+
+یعنی مرحله‌ی `pip install -r requirements.txt` کامل نشده (معمولاً به‌خاطر همان خطای Pillow در بالا). بعد از رفع مشکل Pillow و نصب موفق، این خطا هم حل می‌شود. برای اطمینان:
+
+```bash
+cd /root/vpn-bot
+./venv/bin/pip list | grep -i aiogram
+PYTHONPATH=/root/vpn-bot ./venv/bin/python bot/main.py
+```
 
 ---
 
