@@ -119,7 +119,35 @@ sudo journalctl -u vpnbot -f        # مشاهده‌ی لاگ زنده
 
 ## عیب‌یابی خطاهای رایج
 
-### خطای `Failed to build 'Pillow'`
+### خطای `Failed to build 'Pillow'` روی Python 3.13 / 3.14
+
+اگر `python3 --version` نسخه‌ی **3.13 یا 3.14** نشان می‌دهد، مشکل این است: نسخه‌های پین‌شده در `requirements.txt` (مثل `Pillow==10.2.0` و `aiohttp==3.9.3`) برای این پایتون‌های جدید `wheel` آماده ندارند و از روی سورس هم بیلد نمی‌شوند.
+
+**راه‌حل پیشنهادی:** ساخت محیط مجازی با Python 3.12:
+
+```bash
+# بررسی نسخه‌های موجود
+python3 --version
+ls /usr/bin/python3*
+
+# اگر python3.12 ندارید، نصبش کنید (Ubuntu)
+sudo apt update
+sudo apt install -y software-properties-common
+sudo add-apt-repository -y ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install -y python3.12 python3.12-venv python3.12-dev build-essential libjpeg-dev zlib1g-dev libpng-dev
+
+# ساخت دوباره‌ی venv با پایتون 3.12
+cd /root/vpn-bot
+rm -rf venv
+python3.12 -m venv venv
+./venv/bin/pip install --upgrade pip setuptools wheel
+./venv/bin/pip install -r requirements.txt
+```
+
+> مسیر `venv` عوض نمی‌شود، پس فایل سرویس systemd (`deploy/vpnbot.service`) بدون تغییر کار می‌کند.
+
+### خطای `Failed to build 'Pillow'` روی Python 3.12 و قدیمی‌تر
 
 یعنی وابستگی‌های سیستمی نصب نیست یا `pip` قدیمی است. راه‌حل:
 
