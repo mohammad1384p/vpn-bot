@@ -2,7 +2,10 @@ venv/
 __pycache__/
 *.pyc
 .env
+*.log
+bot.log
 vpn_bot_backup_*.db
+backups/*.tar.gz
 org.chromium.Chromium.*/
 snap-private-tmp/
 systemd-private-*/

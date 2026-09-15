@@ -1,4 +1,4 @@
-import asyncio, logging
+import asyncio, logging, os
 from aiogram import Bot, Dispatcher
 from aiogram.types import FSInputFile
 from aiogram.client.default import DefaultBotProperties
@@ -97,10 +97,23 @@ async def expiration_checker(bot: Bot):
                         await session.commit()
                 except: pass
 
+def build_session():
+    """اگر PROXY_URL در .env ست شده باشد (مثلاً سرور ایران)، تلگرام از طریق آن صدا زده می‌شود."""
+    proxy = os.getenv("PROXY_URL") or os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+    if not proxy:
+        return None
+    try:
+        from aiogram.client.session.aiohttp import AiohttpSession
+        logging.info(f"🌐 استفاده از پروکسی برای اتصال به تلگرام: {proxy.split('@')[-1]}")
+        return AiohttpSession(proxy=proxy)
+    except Exception as e:
+        logging.error(f"⚠️ پروکسی ست شده اما قابل استفاده نیست ({e}). بدون پروکسی ادامه می‌دهم.")
+        return None
+
 async def main():
     await init_db()
     await migrate_db()
-    bot = Bot(token=Config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(token=Config.BOT_TOKEN, session=build_session(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     # افزایش تایم‌اوت برای بهبود اتصال در شبکه ایران
     bot.session.timeout = 60 
     await bot.delete_webhook(drop_pending_updates=True)
