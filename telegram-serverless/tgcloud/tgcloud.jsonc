@@ -1,0 +1,8 @@
+{
+  // This project has no Mini App / static front-end — it is a plain Telegram
+  // bot (message + callback_query handlers only). To host a Mini App later,
+  // uncomment and set "source" to its build output folder:
+  // "static": {
+  //   "source": "dist"
+  // }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "vpn-bot-tgcloud",
+  "private": true,
+  "scripts": {
+    "deploy": "tgcloud push",
+    "status": "tgcloud status",
+    "run": "tgcloud run"
+  }
+}
