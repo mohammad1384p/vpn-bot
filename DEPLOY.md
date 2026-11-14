@@ -89,10 +89,14 @@ nano /root/vpn-bot/.env
 ```env
 BOT_TOKEN=1234567890:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ADMIN_ID=123456789
+
+# اختیاری: فقط وقتی سرور به api.telegram.org دسترسی ندارد (ایران/فیلترینگ)
+# TELEGRAM_PROXY=socks5://127.0.0.1:1080
 ```
 
 - `BOT_TOKEN` → توکن ربات از BotFather
 - `ADMIN_ID` → آیدی **عددی** تلگرام ادمین (از @userinfobot)
+- `TELEGRAM_PROXY` → (اختیاری) آدرس پروکسی SOCKS5/HTTP برای اتصال به تلگرام؛ مثل `socks5://127.0.0.1:1080` یا `http://user:pass@1.2.3.4:8080`
 
 > بدون `ADMIN_ID` ربات اجرا نمی‌شود (مقدارش در کد `int()` می‌شود).
 >
@@ -115,20 +119,41 @@ PYTHONPATH=$PWD ./venv/bin/python bot/main.py
 
 ## ۶) اجرای دائمی با systemd (پیشنهاد شده)
 
-فایل سرویس آماده در `deploy/vpnbot.service` داخل ریپو هست. چون مسیر پروژه‌ی شما هر جا که باشد، با این دستور مسیرها درست جایگزین می‌شوند:
+با این دستورات، فایل سرویس مستقیم ساخته می‌شود (نیازی به فایل `deploy/vpnbot.service` نیست و مسیر پروژه هر جا که باشد درست جایگزین می‌شود):
 
 ```bash
-cd /root/vpn-bot        # بروید داخل پوشه‌ی پروژه
-sudo sed "s|/root/vpn-bot|$(pwd)|g" deploy/vpnbot.service | sudo tee /etc/systemd/system/vpnbot.service
+cd /root/vpn-bot        # بروید داخل پوشه‌ی پروژه (هر مسیری که هست، مثلاً /opt/vpn-bot)
+sudo rm -f /etc/systemd/system/vpnbot.service
+sudo systemctl unmask vpnbot
+sudo tee /etc/systemd/system/vpnbot.service > /dev/null <<EOF
+[Unit]
+Description=VPN Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$(pwd)
+Environment=PYTHONPATH=$(pwd)
+ExecStart=$(pwd)/venv/bin/python bot/main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
 sudo systemctl daemon-reload
 sudo systemctl enable vpnbot
 sudo systemctl start vpnbot
 ```
 
-> اگر پروژه دقیقاً در `/root/vpn-bot` است، همان دستور ساده‌ی قبلی هم جواب می‌دهد:
+> دقت کنید `EOF` آخر بدون `''` نوشته شده تا `$(pwd)` همان لحظه با مسیر واقعی پروژه جایگزین شود. دستورات را **دقیقاً از داخل پوشه‌ی پروژه** اجرا کنید.
+>
+> اگر فایل `deploy/vpnbot.service` داخل ریپو دارید، روش جایگزین:
 >
 > ```bash
-> sudo cp /root/vpn-bot/deploy/vpnbot.service /etc/systemd/system/vpnbot.service
+> sudo sed "s|/root/vpn-bot|$(pwd)|g" deploy/vpnbot.service | sudo tee /etc/systemd/system/vpnbot.service
 > sudo systemctl daemon-reload
 > sudo systemctl enable vpnbot
 > sudo systemctl start vpnbot
@@ -220,6 +245,43 @@ cd /root/vpn-bot
 ```
 
 (در `requirements.txt` فعلی این مورد لحاظ شده و با نصب معمولی پیش نمی‌آید.)
+
+### خطای `Unit file ... is masked` یا `sed: can't read deploy/vpnbot.service`
+
+یعنی فایل سرویس قبلاً خراب/masked شده یا فایل `deploy/vpnbot.service` داخل چک‌اوت شما نیست. با دستورات مرحله‌ی ۶ (روش heredoc) مشکل حل می‌شود؛ آن دستورات اول `rm -f` و `unmask` را انجام می‌دهند و بعد فایل سرویس را از نو می‌سازند.
+
+### خطای `TelegramNetworkError: Request timeout error`
+
+یعنی سرور نمی‌تواند به `api.telegram.org` وصل شود. اول مشخص کنید مشکل از چیست:
+
+```bash
+# باید در کمتر از ۱۰ ثانیه عدد 404 برگرداند (یعنی اتصال برقرار است)
+curl -m 10 -sS -o /dev/null -w "%{http_code}\n" https://api.telegram.org/
+
+# اگر بالایی timeout خورد، IPv4 را جدا امتحان کنید
+curl -4 -m 10 -sS -o /dev/null -w "%{http_code}\n" https://api.telegram.org/
+```
+
+- اگر فقط دستور اول timeout خورد ولی `curl -4` جواب داد → مشکل **IPv6 خراب** است؛ کد فعلی ربات IPv4 را اجباری می‌کند و مشکل حل می‌شود (کافی است نسخه‌ی جدید را `git pull` کنید).
+- اگر **هر دو** timeout خوردند → سرور به تلگرام دسترسی ندارد (فیلترینگ/مسدودسازی). باید از **پروکسی** استفاده کنید:
+
+1. روی سرور یک پروکسی SOCKS5 بالا بیاورید (مثلاً تانل SSH):
+
+   ```bash
+   ssh -f -N -D 1080 user@سرور-خارجی
+   ```
+
+2. در فایل `.env` اضافه کنید و ربات را ری‌استارت کنید:
+
+   ```env
+   TELEGRAM_PROXY=socks5://127.0.0.1:1080
+   ```
+
+   ```bash
+   sudo systemctl restart vpnbot
+   ```
+
+> خطای `Unclosed client session` فقط یک هشدار تمیزکاری هنگام خروج است و ریشه‌ی مشکل نیست؛ در نسخه‌ی جدید کد رفع هم شده.
 
 ### ربات اجرا می‌شود ولی جواب نمی‌دهد
 

@@ -1,8 +1,9 @@
-import asyncio, logging
+import asyncio, logging, os, socket
 from aiogram import Bot, Dispatcher
 from aiogram.types import FSInputFile
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.client.session.aiohttp import AiohttpSession
 from bot.config import Config
 from bot.database import init_db, migrate_db, get_db, ConfigProfile
 from bot.panel_api import panel_api
@@ -97,14 +98,24 @@ async def expiration_checker(bot: Bot):
                         await session.commit()
                 except: pass
 
+def build_session() -> AiohttpSession:
+    """ساخت session تلگرام؛ IPv4 اجباری + پروکسی اختیاری با متغیر TELEGRAM_PROXY."""
+    proxy = (os.getenv("TELEGRAM_PROXY") or "").strip() or None
+    if proxy:
+        logging.info("🌐 Telegram proxy enabled: %s", proxy.split("@")[-1])
+        return AiohttpSession(proxy=proxy, timeout=60)
+    session = AiohttpSession(timeout=60)
+    try:
+        # بعضی سرورها IPv6 خراب دارند و درخواست‌ها timeout می‌شوند؛ IPv4 پایدارتر است
+        session._connector_init["family"] = socket.AF_INET
+    except Exception:
+        pass
+    return session
+
 async def main():
     await init_db()
     await migrate_db()
-    bot = Bot(token=Config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    # افزایش تایم‌اوت برای بهبود اتصال در شبکه ایران
-    bot.session.timeout = 60 
-    await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("✅ Webhook deleted, starting polling...")
+    bot = Bot(token=Config.BOT_TOKEN, session=build_session(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
     dp.include_router(content_links.router)
     dp.include_router(start.router)
@@ -126,9 +137,14 @@ async def main():
 
     asyncio.create_task(auto_backup_scheduler(bot))
     asyncio.create_task(expiration_checker(bot))
-    
-    try: await dp.start_polling(bot)
-    finally: await panel_api.close()
+
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        logging.info("✅ Webhook deleted, starting polling...")
+        await dp.start_polling(bot)
+    finally:
+        await panel_api.close()
+        await bot.session.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
