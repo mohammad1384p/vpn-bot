@@ -246,6 +246,38 @@ cd /root/vpn-bot
 
 (در `requirements.txt` فعلی این مورد لحاظ شده و با نصب معمولی پیش نمی‌آید.)
 
+### خطای `status=203/EXEC` در journalctl
+
+یعنی systemd نتوانسته فایل اجرایی `ExecStart` را پیدا کند — معمولاً چون دستور `cd` به پوشه‌ی پروژه موفق نبوده (مثلاً `Permission denied`) و `$(pwd)` مسیر اشتباهی ساخته است. با دستورات زیر فایل سرویس را با مسیر ثابت بازنویسی کنید (به‌جای `/opt/vpn-bot` مسیر واقعی پروژه‌ی خودتان را بگذارید):
+
+```bash
+ls -la /opt/vpn-bot/venv/bin/python    # اول مطمئن شوید این فایل وجود دارد
+sudo rm -f /etc/systemd/system/vpnbot.service
+sudo tee /etc/systemd/system/vpnbot.service > /dev/null <<'EOF'
+[Unit]
+Description=VPN Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/vpn-bot
+Environment=PYTHONPATH=/opt/vpn-bot
+ExecStart=/opt/vpn-bot/venv/bin/python bot/main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart vpnbot
+sudo journalctl -u vpnbot -f
+```
+
+> اگر `cd /opt/vpn-bot` خطای `Permission denied` می‌دهد، یعنی با کاربر غیر root وارد شده‌اید؛ اول `sudo -i` بزنید یا همه‌ی دستورها را با `sudo` اجرا کنید.
+
 ### خطای `Unit file ... is masked` یا `sed: can't read deploy/vpnbot.service`
 
 یعنی فایل سرویس قبلاً خراب/masked شده یا فایل `deploy/vpnbot.service` داخل چک‌اوت شما نیست. با دستورات مرحله‌ی ۶ (روش heredoc) مشکل حل می‌شود؛ آن دستورات اول `rm -f` و `unmask` را انجام می‌دهند و بعد فایل سرویس را از نو می‌سازند.
