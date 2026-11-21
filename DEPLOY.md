@@ -237,11 +237,11 @@ PYTHONPATH=$PWD ./venv/bin/python bot/main.py
 
 ### خطای `ImportError: The SQLAlchemy asyncio module requires ... 'greenlet'`
 
-نصب وابستگی‌ها کامل نبوده. کافی است:
+نصب وابستگی‌ها کامل نبوده (مثلاً پکیج‌ها را دستی یا بدون `-r requirements.txt` نصب کرده‌اید و extra‌های لازم جا افتاده‌اند). کافی است:
 
 ```bash
 cd /root/vpn-bot
-./venv/bin/pip install "sqlalchemy[asyncio]"
+./venv/bin/pip install "sqlalchemy[asyncio]" aiohttp-socks
 ```
 
 (در `requirements.txt` فعلی این مورد لحاظ شده و با نصب معمولی پیش نمی‌آید.)
